@@ -9,5 +9,5 @@ This project implements user authentication and organisation management using No
 - Implement endpoints for user registration, login, and organisation management.
 - Ensure validation for all fields with appropriate error responses.
 - Securely hash passwords before storing.
-- Use JWT for authentication and authorization.
+- Use JWT for authentication and authorization..
 
