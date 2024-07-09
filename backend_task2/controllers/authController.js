@@ -1,27 +1,25 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { User, Organisation } = require('../models');
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
 
 const JWT_SECRET = process.env.JWT_SECRET || "WRorycNEfwjCAaeUsQkwWVrsGfOcoPUi";
 
 const register = async (req, res) => {
   const { firstName, lastName, email, password, phone } = req.body;
 
- // Check if required fields are missing
- const errors = [];
- if (!firstName) errors.push({ field: "firstName", message: "First name is required" });
- if (!lastName) errors.push({ field: "lastName", message: "Last name is required" });
- if (!email) errors.push({ field: "email", message: "Email is required" });
- if (!password) errors.push({ field: "password", message: "Password is required" });
- if (!phone) errors.push({ field: "phone", message: "Phone is required" });
+  const errors = [];
+  if (!firstName) errors.push({ field: "firstName", message: "First name is required" });
+  if (!lastName) errors.push({ field: "lastName", message: "Last name is required" });
+  if (!email) errors.push({ field: "email", message: "Email is required" });
+  if (!password) errors.push({ field: "password", message: "Password is required" });
 
- if (errors.length > 0) {
-   return res.status(422).json({ status: "Bad request", errors });
- }
+  if (errors.length > 0) {
+    return res.status(422).json({ status: "Bad request", errors });
+  }
 
   try {
-    // Check if user already exists
-    const existingUser = await User.findOne({ where: { email } });
+    const existingUser = await prisma.user.findUnique({ where: { email } });
     if (existingUser) {
       return res.status(422).json({
         status: 'Bad request',
@@ -29,28 +27,38 @@ const register = async (req, res) => {
       });
     }
 
-    // Create new user
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = await User.create({ firstName, lastName, email, password: hashedPassword, phone });
+    const user = await prisma.user.create({
+      data: {
+        firstName,
+        lastName,
+        email,
+        password: hashedPassword,
+        phone,
+        organisations: {
+          create: {
+            name: `${firstName}'s Organisation`,
+          },
+        },
+      },
+      include: {
+        organisations: true,
+      },
+    });
 
-    // Assign user to default organisation
-    const organisation = await Organisation.findOne({ where: { name: 'Default Organisation' } });
-    if (!organisation) {
-      return res.status(422).json({
-        status: 'Bad request',
-        message: 'Registration unsuccessful, default organisation not found'
-      });
-    }
-    await user.addOrganisation(organisation);
-
-    // Generate JWT
-    const token = jwt.sign({ userId: user.userId }, JWT_SECRET, { expiresIn: '1h' });
+    const accessToken = jwt.sign({ userId: user.userId }, JWT_SECRET, { expiresIn: '1h' });
 
     return res.status(201).json({
       status: 'success',
       data: {
-        accessToken: token,
-        user
+        accessToken,
+        user: {
+          userId: user.userId,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          email: user.email,
+          phone: user.phone,
+        }
       }
     });
   } catch (error) {
@@ -61,9 +69,6 @@ const register = async (req, res) => {
     });
   }
 };
-
-
-
 
 const login = async (req, res) => {
   const { email, password } = req.body;
@@ -78,7 +83,7 @@ const login = async (req, res) => {
   }
 
   try {
-    const user = await User.findOne({ where: { email } });
+    const user = await prisma.user.findUnique({ where: { email } });
 
     if (!user) {
       return res.status(401).json({
@@ -108,7 +113,7 @@ const login = async (req, res) => {
           firstName: user.firstName,
           lastName: user.lastName,
           email: user.email,
-          phone: user.phone
+          phone: user.phone,
         }
       }
     });
